@@ -8,18 +8,13 @@ const props = defineProps({
 
 declare const window: any
 
-import jquery from 'jquery'
 import * as pdfjs from 'pdfjs-dist'
+import { PageFlip } from 'page-flip'
 
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker?worker'
 import { computed, onMounted, reactive, ref } from 'vue'
-import '@ksedline/turnjs'
 import type { Ref } from 'vue'
-
-if (typeof window !== 'undefined') {
-  window.$ = jquery
-  window.jQuery = jquery
-}
+import transparentGif from './../assets/img/transparent.gif'
 
 let pdfObj: any = null
 
@@ -36,7 +31,7 @@ const state: {
 
   flipbookWidth: number
   flipbookHeight: number
-  turnObj: any
+  pageFlip: any
   jqueryFlipbook: any
 
   canvasPageWidth: number
@@ -54,7 +49,7 @@ const state: {
   // The flipbook
   flipbookWidth: 0, // Full width of the flipbook - pages are half of this
   flipbookHeight: 0,
-  turnObj: null,
+  pageFlip: null,
   jqueryFlipbook: null,
 
   // Canvas
@@ -149,7 +144,7 @@ async function setPageCanvas(page: number) {
 
       await pageObj.render(renderContext)
 
-      pageObj.getTextContent().then((textContent) => {
+      pageObj.getTextContent().then((textContentSource: any) => {
         // Assign CSS to the textLayer element
         const textLayer: HTMLDivElement | null = document.querySelector(`#${canvasId}-textlayer`)
 
@@ -161,7 +156,7 @@ async function setPageCanvas(page: number) {
 
           // Pass the data to the method for rendering of text over the pdf canvas.
           pdfjs.renderTextLayer({
-            textContent,
+            textContentSource,
             container: textLayer,
             viewport,
             textDivs: [],
@@ -191,10 +186,17 @@ async function buildFlipbook() {
     // Clear the flipbook
     flipbookContainer.value.innerHTML = ''
 
+    // Placeholder empty div so that we can have the illusion of a cover
+    const coverDiv = document.createElement('div')
+    coverDiv.dataset.density = 'soft'
+    coverDiv.innerHTML = `<img src="${transparentGif}">`
+    flipbookContainer.value.append(coverDiv)
+
     // Build and calculate the flipbook
     for (let i = 1; i <= state.numPages; i++) {
       const id = flipbookIdPrefix + i
       const div = document.createElement('div')
+      div.dataset.density = 'soft'
       div.innerHTML = `<canvas id="${id}"></canvas><div id="${id}-textlayer" class="textLayer"></div>`
       flipbookContainer.value.append(div)
 
@@ -211,15 +213,30 @@ async function buildFlipbook() {
       else
         state.portraitPages++
     }
+
+    // Placeholder empty div at the end so that we can have the illusion of a back cover
+    const backDiv = document.createElement('div')
+    backDiv.dataset.density = 'soft'
+    backDiv.innerHTML = `<img src="${transparentGif}">`
+    flipbookContainer.value.append(backDiv)
+
     for (let i = 1; i <= state.numPages; i++)
       await setPageCanvas(i)
   }
 }
 
-async function loadTurnObj() {
-  state.jqueryFlipbook = jquery(flipbookContainer.value)
-  const turnObj = state.jqueryFlipbook.turn()
-  state.turnObj = turnObj
+async function loadPageFlip() {
+  state.pageFlip = new PageFlip(flipbookContainer.value, {
+    width: flipbookDimensions.value.width / 2,
+    height: flipbookDimensions.value.height,
+    maxShadowOpacity: 0.4,
+    showCover: false,
+    size: 'stretch',
+    disableFlipByClick: false,
+    useMouseEvents: true,
+    startPage: -1,
+  })
+  state.pageFlip.loadFromHTML(document.querySelectorAll('#flipbook-container > div'))
 }
 
 function zoomIn() {
@@ -228,10 +245,6 @@ function zoomIn() {
 
 function zoomOut() {
   state.zoom -= zoomScale
-}
-
-async function setFlipbookDimensions() {
-  state.jqueryFlipbook.turn('size', flipbookDimensions.value.width, flipbookDimensions.value.height)
 }
 
 if (typeof window !== 'undefined') {
@@ -244,19 +257,21 @@ onMounted(async () => {
   calculateCanvasSize()
   await loadPdf()
   await buildFlipbook()
-  await loadTurnObj()
-  setFlipbookDimensions()
+  await loadPageFlip()
 })
 </script>
 
 <template>
   <div class="relative h-screen w-screen flex flex-col justify-between">
     <div class="flex-1 flex justify-center items-center overflow-hidden bg-red-500 p-12">
+      <!-- <UseDraggable class="fixed z-50" :disabled="true" :initial-value="{ x: 10, y: 10 }"> -->
       <div id="flipbook-container" ref="flipbookContainer" class="bg-blue-500 w-[90vw] h-[90vh]" :style="{ zoom: state.zoom }" />
+      <!-- </UseDraggable> -->
       <!-- <div style="position:absolute; top:0; left:0; bottom:0;">
         <FlipBookThumbnails :url="url" />
       </div> -->
     </div>
+
     <div class="flex justify-center">
       <div class="flex space-x-3 p-2 px-4 bg-gray-700 rounded text-gray-100">
         <button @click="zoomIn">
@@ -264,9 +279,6 @@ onMounted(async () => {
         </button>
         <button @click="zoomOut">
           Zoom Out
-        </button>
-        <button @click="setHeight">
-          Set Height
         </button>
       </div>
     </div>
@@ -341,7 +353,6 @@ onMounted(async () => {
  :root {
   --highlight-bg-color: rgba(180, 0, 170, 1);
   --highlight-selected-bg-color: rgba(0, 100, 0, 1);
-  --scale-factor: 1;
 }
 
 @media screen and (forced-colors: active) {
@@ -352,6 +363,7 @@ onMounted(async () => {
 }
 
 .textLayer {
+  --scale-factor: 1;
   position: absolute;
   text-align: initial;
   inset: 0;

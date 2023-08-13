@@ -11,8 +11,10 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
-    "@ksedline/turnjs": "^0.1.0",
+    "@vueuse/components": "^10.3.0",
+    "@vueuse/core": "^10.3.0",
     "jquery": "^3.7.0",
+    "page-flip": "^2.0.7",
     "pdfjs-dist": "^3.9.179",
     "vue": "^3.3.4"
   },
